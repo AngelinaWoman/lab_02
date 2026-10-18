@@ -3,10 +3,11 @@ from streamstats.models import validate_event
 import json, csv
 from typing import Iterator
 from streamstats.errors import UnsupportedFormatError, StreamStatsError, InvalidEventError
+import logging
 
 
-def parse_jsonl(path: Path) -> Iterator[dict[str, str]]:
-    with open(path) as file:
+def parse_jsonl(path: Path, skip_invalid: bool = False) -> Iterator[dict[str, str]]:
+    with open(path, encoding="utf-8") as file:
         line_number = 0
         for line in file:
             line_number += 1
@@ -14,13 +15,19 @@ def parse_jsonl(path: Path) -> Iterator[dict[str, str]]:
                 event = json.loads(line)
                 validate_event(event)
             except json.JSONDecodeError as error:
+                if skip_invalid:
+                    logging.warning("Пропущена некорректная строка %s в файле %s: %s", line_number, path, error)
+                    continue
                 raise InvalidEventError(f"Ошибка: {error}, в файле: {path}, в строке: {line_number}")
             except StreamStatsError as error:
+                if skip_invalid:
+                    logging.warning("Пропущена некорректная строка %s в файле %s: %s", line_number, path, error)
+                    continue
                 raise StreamStatsError(f"Ошибка: {error}, в файле: {path}, в строке: {line_number}") from error
             yield event
 
-def parse_csv(path: Path) -> Iterator[dict[str, str]]:
-    with open(path) as file:
+def parse_csv(path: Path, skip_invalid: bool = False) -> Iterator[dict[str, str]]:
+    with open(path, encoding="utf-8") as file:
         line_number = 1
         dict_csv = csv.DictReader(file)
         for event in dict_csv:
@@ -28,13 +35,16 @@ def parse_csv(path: Path) -> Iterator[dict[str, str]]:
             try:
                 validate_event(event)
             except StreamStatsError as error:
+                if skip_invalid:
+                    logging.warning("Пропущена некорректная строка %s в файле %s: %s", line_number, path, error)
+                    continue
                 raise StreamStatsError(f"Ошибка: {error}, в файле: {path}, в строке: {line_number}") from error
             yield event
 
-def parse_file(path: Path) -> Iterator[dict[str, str]]:
+def parse_file(path: Path, skip_invalid: bool = False) -> Iterator[dict[str, str]]:
     if path.suffix == ".csv":
-        return parse_csv(path)
+        return parse_csv(path, skip_invalid)
     elif path.suffix == ".jsonl":
-        return parse_jsonl(path)
+        return parse_jsonl(path, skip_invalid)
     else:
         raise UnsupportedFormatError("Недопустимый формат файла")
