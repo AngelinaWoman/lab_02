@@ -5,7 +5,7 @@ from streamstats.report import save_report
 from itertools import chain
 from pathlib import Path
 import sys
-from streamstats.errors import StreamStatsError
+from streamstats.errors import StreamStatsError, CLIConfigurationError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,9 +29,16 @@ def main() -> None:
     args = build_parser().parse_args()
 
     try:
-        events = chain.from_iterable(parse_file(Path(file_path), args.skip_invalid) for file_path in args.inputs)
+        skipped = {"count": 0}
+
+        for file_path in args.inputs:
+            if Path(file_path).suffix != f".{args.format}":
+                raise CLIConfigurationError(f"Файл {file_path} не соответствует формату {args.format}")
+
+        events = chain.from_iterable(parse_file(Path(file_path), skipped, args.skip_invalid) for file_path in args.inputs)
 
         result = analyze_events(events)
+        result["skipped_lines"] = skipped["count"]
         save_report(result, args.output)
     except StreamStatsError as error:
         print(error, file=sys.stderr)
